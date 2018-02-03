@@ -7,3 +7,6 @@ run:
 
 test:
 	cargo test
+
+getconfigs:
+	scripts/generateconfigs

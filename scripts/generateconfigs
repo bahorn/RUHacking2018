@@ -1,0 +1,4 @@
+#!/bin/sh
+BIN=target/debug/ruhacking2018
+
+RU_CONFIG_FILE=configs/1.json $BIN -c
