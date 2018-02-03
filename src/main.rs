@@ -11,6 +11,9 @@ extern crate rmp_serde as rmps;
 extern crate dotenv;
 extern crate sodiumoxide;
 extern crate chrono;
+extern crate futures;
+#[macro_use]
+extern crate tokio_core;
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use sodiumoxide::crypto::box_;
@@ -18,12 +21,13 @@ use dotenv::dotenv;
 use std::process::exit;
 use chrono::prelude::*;
 use std::{env, thread, time};
-use std::sync::{Mutex, Arc};
+use std::sync::Mutex;
+use futures::{Future, Poll};
+use tokio_core::net::UdpSocket;
+use tokio_core::reactor::Core;
 
-
-fn main_loop(server_client: config::Config)
+fn control_loop(server_client: config::Config)
 {
-    let stack = network::NetworkStack::new_clean();
     /*
     let stack: network::NetworkStack = network::NetworkStack::new_clean();
     let (mut public, mut private) = box_::gen_keypair();
@@ -31,14 +35,32 @@ fn main_loop(server_client: config::Config)
     let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
     let their_node = nodes::NodeInfo::new(public, socket, now);  
     */
-
-    let handle = thread::spawn(move || {
-        loop {
-            println!("{:?}",stack.read_message());
-        }
-    });
+    //let mut handles = vec![];
+    //let stack = network::NetworkStack::new_clean();
+    /*
+    for x in 0..1 {
+        let handle = thread::spawn(move || {
+            if x == 0 {
+                loop {
+                    println!("{:?}",stack.read_message());
+                }
+            } else if x == 1 {
+                loop {
+                    println!("{:?}",stack.read_message());
+                }
+            }
+        });
+        handles.push(handle);
+    }
     /* A loop. */
-    handle.join();
+    for h in handles {
+        h.join().unwrap();
+    }*/
+    let mut l = Core::new().unwrap();
+    let handle = l.handle();
+    l.run(
+        network::NetworkStack::new_clean(handle)
+    ).unwrap();
 }
 
 fn main()
@@ -73,6 +95,6 @@ fn main()
         exit(0);
     } else {
         node_config = config::Config::read_config_file(&config_path);
-        main_loop(node_config);
+        control_loop(node_config);
     }
 }

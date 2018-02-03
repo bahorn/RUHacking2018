@@ -1,6 +1,10 @@
 use nodes::{OurNodeInfo, NodeInfo, KnownNodes};
 
-use std::net::{SocketAddr, UdpSocket};
+use std::io;
+use std::net::{SocketAddr};
+use tokio_core::net::UdpSocket;
+use tokio_core::reactor::{Core, Handle};
+use futures::{Future, Poll};
 use sodiumoxide::crypto::box_;
 
 /* How we describe messages sent over the wire */
@@ -15,32 +19,36 @@ pub struct NetworkStack {
     our_node: OurNodeInfo,
     known_nodes: KnownNodes,
     socket: UdpSocket,
-    interface: SocketAddr
+    interface: SocketAddr,
+    to_send: Option<(usize, SocketAddr)>,
+    buf: Vec<u8>
 }
 
 impl NetworkStack {
     // Setup our network.
-    fn setup() -> NetworkStack {
+    fn setup(handle: Handle) -> NetworkStack {
         let interface = SocketAddr::from(([0,0,0,0],3000));
         let mut network_stack = NetworkStack {
             our_node: OurNodeInfo::new(),
             known_nodes: KnownNodes::new(),
-            socket: UdpSocket::bind(interface)
+            socket: UdpSocket::bind(&interface, &handle)
                 .expect("couldn't bind to address"),
-            interface: interface
+            interface: interface,
+            buf: vec![0; 1024],
+            to_send: None
         };
         network_stack
     }
-    pub fn new(bootstrap_node: NodeInfo) -> NetworkStack {
-        let mut network_stack = NetworkStack::setup();
+    pub fn new(bootstrap_node: NodeInfo, handle: Handle) -> NetworkStack {
+        let mut network_stack = NetworkStack::setup(handle);
         // Install a bootstrap node.
         network_stack.known_nodes.add_node(bootstrap_node);
         // We should attempt to get a list of peers from this node.
         network_stack
     }
     /* In case we don't want to provide a bootstrap node */
-    pub fn new_clean() -> NetworkStack {
-        NetworkStack::setup()
+    pub fn new_clean(handle: Handle) -> NetworkStack {
+        NetworkStack::setup(handle)
     }
     /* Talk to a known node */
     pub fn send_message(&self, public_key: box_::PublicKey,
@@ -57,10 +65,10 @@ impl NetworkStack {
         }
         let encrypted_message = user_node.encrypt(message);
         // Now attempt to send this out.
-        self.socket.connect(user_node.address)
-            .expect("connect function failed");
-        self.socket.send(&encrypted_message)
-            .expect("couldn't send message");
+        //self.socket.connect(user_node.address)
+        //    .expect("connect function failed");
+        //self.socket.send(&encrypted_message)
+        //    .expect("couldn't send message");
         Ok(())
     }
     /* Read a message from the UDP socket. */
@@ -88,5 +96,26 @@ impl NetworkStack {
 
     pub fn add_node(&mut self, node: NodeInfo) {
         self.known_nodes.add_node(node);
+    }
+}
+
+
+/* stolen from the tokio-core udp example */
+impl Future for NetworkStack {
+    type Item = ();
+    type Error = io::Error;
+
+    fn poll(&mut self) -> Poll<(), io::Error> {
+        loop {
+            if let Some((size, peer)) = self.to_send {
+                let amt = try_nb!(self.socket.send_to(&self.buf[..size], &peer));
+                println!("Echoed {}/{} bytes to {}", amt, size, peer);
+                self.to_send = None;
+            }
+
+            // If we're here then `to_send` is `None`, so we take a look for the
+            // next message we're going to echo back.
+            self.to_send = Some(try_nb!(self.socket.recv_from(&mut self.buf)));
+        }
     }
 }
