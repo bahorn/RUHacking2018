@@ -1,7 +1,7 @@
 mod network;
 mod nodes;
 mod config;
-
+mod protocol;
 
 #[macro_use]
 extern crate serde_derive;

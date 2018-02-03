@@ -1,4 +1,5 @@
 use nodes::{OurNodeInfo, NodeInfo, KnownNodes};
+use protocol::{MessageFormat};
 
 use std::io;
 use std::net::{SocketAddr};
@@ -6,13 +7,6 @@ use tokio_core::net::UdpSocket;
 use tokio_core::reactor::{Core, Handle};
 use futures::{Future, Poll};
 use sodiumoxide::crypto::box_;
-
-/* How we describe messages sent over the wire */
-#[derive(Serialize, Deserialize, Debug)]
-pub struct MessageFormat {
-    pub message_type: i32,
-    pub data: Vec<u8>
-}
 
 /* Implement the main network state */
 pub struct NetworkStack {
@@ -72,6 +66,7 @@ impl NetworkStack {
         Ok(())
     }
     /* Read a message from the UDP socket. */
+    /*
     pub fn read_message(&self) -> Result<(MessageFormat, SocketAddr), ()> {
         // search by SocketAddr to find public key.
         let mut buf = Vec::new();
@@ -83,10 +78,12 @@ impl NetworkStack {
             },
             Err(_) => return Err(())
         }
+    }*/
+    pub fn read_real_message(&self, buf: &[u8]) -> Result<MessageFormat, ()> {
         let message = self.our_node.decrypt(&buf);
         match message {
             Ok(message_format) => {
-                return Ok((message_format, socket_address));
+                return Ok(message_format);
             },
             Err(_) => {
                 return Err(());
@@ -109,7 +106,15 @@ impl Future for NetworkStack {
         loop {
             if let Some((size, peer)) = self.to_send {
                 let amt = try_nb!(self.socket.send_to(&self.buf[..size], &peer));
-                println!("Echoed {}/{} bytes to {}", amt, size, peer);
+                match self.read_real_message(&self.buf[..size]) {
+                    Ok(message) => {
+                        // Now preform what we need to do.
+                        println!("{:?}",message);
+                    },
+                    Err(_) => {
+                        println!("[!] Couldn't parse it.");
+                    }
+                }
                 self.to_send = None;
             }
 

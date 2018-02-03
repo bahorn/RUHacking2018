@@ -1,4 +1,4 @@
-use network::MessageFormat;
+use protocol::MessageFormat;
 
 use std::net::SocketAddr;
 use std::collections::HashMap;
