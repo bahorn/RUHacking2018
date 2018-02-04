@@ -3,7 +3,8 @@ use protocol::MessageFormat;
 use std::net::SocketAddr;
 use std::collections::HashMap;
 use sodiumoxide::crypto::{box_,sealedbox};
-use rmps;
+use serde::{Deserialize, Serialize};
+use serde_json;//::{Value, Error};
 use chrono::prelude::*;
 
 /* Us */
@@ -24,12 +25,8 @@ impl OurNodeInfo {
         let decrypted = sealedbox::open(message, &self.public, &self.private);
         match decrypted {
             Ok(decrypted_message) => {
-                match rmps::from_slice(&decrypted_message) {
-                    Ok(deserialized_message_pack) => {
-                        return Ok(deserialized_message_pack);
-                    },
-                    Err(_) => return Err(())
-                }
+                let x: MessageFormat = serde_json::from_str(&String::from_utf8(decrypted_message).unwrap()).unwrap();
+                Ok(x)
             },
             Err(_) => return Err(())
         }
@@ -52,7 +49,7 @@ impl NodeInfo {
     }
     // Send an encrypted message to this node.
     pub fn encrypt(&self, message: MessageFormat) -> Vec<u8> {
-        let buf = rmps::to_vec(&message).unwrap();
+        let buf: Vec<u8> = serde_json::to_string(&message).unwrap().into_bytes();
         sealedbox::seal(&buf, &self.public)
     }
 }

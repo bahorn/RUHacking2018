@@ -9,8 +9,8 @@ use tokio_core::net::UdpSocket;
 use tokio_core::reactor::{Core, Handle};
 use futures::{Future, Poll};
 use sodiumoxide::crypto::box_;
-use std::collections::HashMap;
-
+use std::collections::{HashMap, VecDeque};
+use futures::Async::Ready;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CachedKeys {
@@ -24,6 +24,13 @@ impl CachedKeys {
     pub fn cache_key(&mut self, host: SocketAddr, key: box_::PublicKey) {
         &self.cached_keys.insert(host, key);
     }
+}
+
+/* Used to express what we need to do on the network */
+#[derive(Serialize, Deserialize, Debug)]
+pub struct NetworkAction {
+    message: MessageFormat,
+    to: box_::PublicKey
 }
 
 /* Implement the main network state. This is meant to be stuff we can serialize.
@@ -45,11 +52,11 @@ impl NetworkCore {
     }
 }
 
-
 pub struct NetworkStack {
     core: NetworkCore,
     socket: UdpSocket,
     interface: SocketAddr,
+    message_queue: VecDeque<NetworkAction>,
     to_send: Option<(usize, SocketAddr)>,
     buf: Vec<u8>
 }
@@ -61,10 +68,11 @@ impl NetworkStack {
         let interface = SocketAddr::from(([127, 0, 0, 1], port));
         let mut network_stack = NetworkStack {
             core: node_config,
+            message_queue: VecDeque::new(),
             socket: UdpSocket::bind(&interface, &handle)
                 .expect("couldn't bind to address"),
             interface: interface,
-            buf: vec![0; 1024],
+            buf: vec![0; 2048], // Make it greater than the MTU.
             to_send: None
         };
         network_stack
@@ -109,7 +117,12 @@ impl NetworkStack {
     pub fn add_node(&mut self, node: NodeInfo) {
         self.core.known_nodes.add_node(node);
     }
+    //
+    pub fn add_to_queue(&mut self, action: NetworkAction) {
+    }
 }
+
+
 
 
 /* stolen from the tokio-core udp example */
@@ -124,7 +137,7 @@ impl Future for NetworkStack {
                 match self.read_message(&self.buf[..size]) {
                     Ok(message) => {
                         // Now preform what we need to do.
-                        println!("{:?}",message);
+                        message.parse();
                     },
                     Err(_) => {
                         println!("[!] Couldn't parse it.");
@@ -132,10 +145,24 @@ impl Future for NetworkStack {
                 }
                 self.to_send = None;
             }
-
-            // If we're here then `to_send` is `None`, so we take a look for the
-            // next message we're going to echo back.
             self.to_send = Some(try_nb!(self.socket.recv_from(&mut self.buf)));
         }
+        /*loop {
+
+            //self.to_send = Some(try_nb!(self.socket.recv_from(&mut self.buf)));
+
+            /* Check if we can read anything */
+            match self.socket.poll_read() {
+                Ready(x) => {
+                    // Attempt to read.
+                    println!("hit");
+                    self.to_send = Some(try_nb!(self.socket.recv_from(&mut self.buf)));
+                },
+                NotReady => {
+                    // Nothing to do.
+                }
+            }
+        }*/
     }
 }
+
