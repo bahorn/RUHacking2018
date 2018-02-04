@@ -19,47 +19,20 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use sodiumoxide::crypto::box_;
 use dotenv::dotenv;
 use std::process::exit;
-use chrono::prelude::*;
 use std::{env, thread, time};
-use std::sync::Mutex;
 use futures::{Future, Poll};
 use tokio_core::net::UdpSocket;
 use tokio_core::reactor::Core;
 
 fn control_loop(server_client: config::Config)
 {
-    /*
-    let stack: network::NetworkStack = network::NetworkStack::new_clean();
-    let (mut public, mut private) = box_::gen_keypair();
-    let now = Utc::now();
-    let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-    let their_node = nodes::NodeInfo::new(public, socket, now);  
-    */
-    //let mut handles = vec![];
-    //let stack = network::NetworkStack::new_clean();
-    /*
-    for x in 0..1 {
-        let handle = thread::spawn(move || {
-            if x == 0 {
-                loop {
-                    println!("{:?}",stack.read_message());
-                }
-            } else if x == 1 {
-                loop {
-                    println!("{:?}",stack.read_message());
-                }
-            }
-        });
-        handles.push(handle);
-    }
-    /* A loop. */
-    for h in handles {
-        h.join().unwrap();
-    }*/
+    let bootstrapped = false;
+    // Display the config
+    println!("[!] Using config: {:?}", server_client);
     let mut l = Core::new().unwrap();
     let handle = l.handle();
     l.run(
-        network::NetworkStack::new_clean(handle)
+        network::NetworkStack::new(handle, 3000, server_client.network_core)
     ).unwrap();
 }
 
@@ -82,7 +55,6 @@ fn main()
             config_path = "./config.json".to_string();
         }
     }
-    // Quick hack to parse generate configs
     for argument in env::args() {
         if argument == "-c" {
             make_configs = true;
@@ -90,7 +62,7 @@ fn main()
     }
 
     if make_configs == true {
-        node_config = config::Config::read_config_file(&config_path);
+        node_config = config::Config::new();
         node_config.save(&config_path);
         exit(0);
     } else {

@@ -1,5 +1,5 @@
 // Used to parse Config JSON files.
-use nodes::{OurNodeInfo, NodeInfo, KnownNodes};
+use network::NetworkCore;
 
 use serde_json;
 
@@ -8,8 +8,7 @@ use std::io::prelude::*;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
-    known_nodes: KnownNodes,
-    our_node: OurNodeInfo
+    pub network_core: NetworkCore
 }
 
 impl Config {
@@ -26,8 +25,7 @@ impl Config {
     // Create an empty config.
     pub fn new() -> Config {
         Config {
-            known_nodes: KnownNodes::new(),
-            our_node: OurNodeInfo::new()
+            network_core: NetworkCore::new()
         }
     }
     // Save the config to a file.

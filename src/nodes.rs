@@ -60,7 +60,7 @@ impl NodeInfo {
 /* List of every node we know of */
 #[derive(Serialize, Deserialize, Debug)]
 pub struct KnownNodes {
-    nodes: HashMap<box_::PublicKey, NodeInfo>
+    pub nodes: HashMap<box_::PublicKey, NodeInfo>
 }
 
 impl KnownNodes {
@@ -78,6 +78,16 @@ impl KnownNodes {
 
     pub fn get(&self, public_key: box_::PublicKey) -> Option<&NodeInfo> { 
         self.nodes.get(&public_key)
+    }
+    pub fn get_length(&self) -> usize {
+        self.nodes.len()
+    }
+    pub fn get_random_node(&self) -> Result<&NodeInfo, ()> {
+        // Get the first element.
+        for value in self.nodes.values() {
+            return Ok(value);
+        }
+        return Err(());
     }
 }
 

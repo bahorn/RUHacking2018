@@ -1,17 +1,53 @@
 use nodes::{OurNodeInfo, NodeInfo, KnownNodes};
 use protocol::{MessageFormat};
+use config::Config;
 
 use std::io;
+use chrono::Utc;
 use std::net::{SocketAddr};
 use tokio_core::net::UdpSocket;
 use tokio_core::reactor::{Core, Handle};
 use futures::{Future, Poll};
 use sodiumoxide::crypto::box_;
+use std::collections::HashMap;
 
-/* Implement the main network state */
-pub struct NetworkStack {
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CachedKeys {
+    cached_keys: HashMap<SocketAddr, box_::PublicKey>
+}
+
+impl CachedKeys {
+    pub fn new() -> CachedKeys {
+        CachedKeys {cached_keys: HashMap::new()}
+    }
+    pub fn cache_key(&mut self, host: SocketAddr, key: box_::PublicKey) {
+        &self.cached_keys.insert(host, key);
+    }
+}
+
+/* Implement the main network state. This is meant to be stuff we can serialize.
+ * */
+#[derive(Serialize, Deserialize, Debug)]
+pub struct NetworkCore {
     our_node: OurNodeInfo,
     known_nodes: KnownNodes,
+    cached_keys: CachedKeys,
+}
+
+impl NetworkCore {
+    pub fn new() -> NetworkCore {
+        NetworkCore {
+            cached_keys: CachedKeys::new(),
+            our_node: OurNodeInfo::new(),
+            known_nodes: KnownNodes::new(),
+        }
+    }
+}
+
+
+pub struct NetworkStack {
+    core: NetworkCore,
     socket: UdpSocket,
     interface: SocketAddr,
     to_send: Option<(usize, SocketAddr)>,
@@ -19,12 +55,12 @@ pub struct NetworkStack {
 }
 
 impl NetworkStack {
+
     // Setup our network.
-    fn setup(handle: Handle) -> NetworkStack {
-        let interface = SocketAddr::from(([0,0,0,0],3000));
+    fn setup(handle: Handle, port: u16, node_config: NetworkCore) -> NetworkStack {
+        let interface = SocketAddr::from(([127, 0, 0, 1], port));
         let mut network_stack = NetworkStack {
-            our_node: OurNodeInfo::new(),
-            known_nodes: KnownNodes::new(),
+            core: node_config,
             socket: UdpSocket::bind(&interface, &handle)
                 .expect("couldn't bind to address"),
             interface: interface,
@@ -33,21 +69,17 @@ impl NetworkStack {
         };
         network_stack
     }
-    pub fn new(bootstrap_node: NodeInfo, handle: Handle) -> NetworkStack {
-        let mut network_stack = NetworkStack::setup(handle);
-        // Install a bootstrap node.
-        network_stack.known_nodes.add_node(bootstrap_node);
+
+    pub fn new(handle: Handle, port: u16, node_config: NetworkCore) -> NetworkStack {
+        let mut network_stack = NetworkStack::setup(handle, port, node_config);
         // We should attempt to get a list of peers from this node.
         network_stack
     }
-    /* In case we don't want to provide a bootstrap node */
-    pub fn new_clean(handle: Handle) -> NetworkStack {
-        NetworkStack::setup(handle)
-    }
+
     /* Talk to a known node */
     pub fn send_message(&self, public_key: box_::PublicKey,
                         message: MessageFormat) -> Result<(), &'static str> {
-        let node = self.known_nodes.get(public_key);
+        let node = self.core.known_nodes.get(public_key);
         let user_node: &NodeInfo;
         match node {
             Some(found_node) => {
@@ -58,29 +90,12 @@ impl NetworkStack {
             }
         }
         let encrypted_message = user_node.encrypt(message);
-        // Now attempt to send this out.
-        //self.socket.connect(user_node.address)
-        //    .expect("connect function failed");
-        //self.socket.send(&encrypted_message)
-        //    .expect("couldn't send message");
+
         Ok(())
     }
-    /* Read a message from the UDP socket. */
-    /*
-    pub fn read_message(&self) -> Result<(MessageFormat, SocketAddr), ()> {
-        // search by SocketAddr to find public key.
-        let mut buf = Vec::new();
-        let socket_address: SocketAddr;
-        match self.socket.recv_from(&mut buf) {
-            Ok((size, socket_addr)) => {
-                socket_address = socket_addr;
-                println!("[!] Got message!");
-            },
-            Err(_) => return Err(())
-        }
-    }*/
-    pub fn read_real_message(&self, buf: &[u8]) -> Result<MessageFormat, ()> {
-        let message = self.our_node.decrypt(&buf);
+
+    pub fn read_message(&self, buf: &[u8]) -> Result<MessageFormat, ()> {
+        let message = self.core.our_node.decrypt(&buf);
         match message {
             Ok(message_format) => {
                 return Ok(message_format);
@@ -92,7 +107,7 @@ impl NetworkStack {
     }
 
     pub fn add_node(&mut self, node: NodeInfo) {
-        self.known_nodes.add_node(node);
+        self.core.known_nodes.add_node(node);
     }
 }
 
@@ -106,7 +121,7 @@ impl Future for NetworkStack {
         loop {
             if let Some((size, peer)) = self.to_send {
                 let amt = try_nb!(self.socket.send_to(&self.buf[..size], &peer));
-                match self.read_real_message(&self.buf[..size]) {
+                match self.read_message(&self.buf[..size]) {
                     Ok(message) => {
                         // Now preform what we need to do.
                         println!("{:?}",message);
