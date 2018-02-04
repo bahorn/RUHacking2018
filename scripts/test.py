@@ -9,7 +9,16 @@ realKey = []
 for x in key:
     realKey += [chr(x)]
 key = "".join(realKey)
-message = {"message_type":'AnnouncePeer', "data":{}}
+message = {
+    "message_type":'AnnouncePeer',
+    "data":{
+        "peers": [
+            {
+                "public_key": key.encode('hex'), "host":"127.0.0.1", "port":3001
+            }
+        ]
+    }
+}
 print json.dumps(message)
 blah = pysodium.crypto_box_seal(json.dumps(message), key)
 print blah.encode('hex')

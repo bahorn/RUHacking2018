@@ -123,8 +123,6 @@ impl NetworkStack {
 }
 
 
-
-
 /* stolen from the tokio-core udp example */
 impl Future for NetworkStack {
     type Item = ();
